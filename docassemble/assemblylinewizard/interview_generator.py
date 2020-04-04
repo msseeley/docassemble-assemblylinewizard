@@ -20,9 +20,46 @@ import types
 
 TypeType = type(type(None))
 
-__all__ = ['Playground', 'PlaygroundSection', 'indent_by', 'varname', 'DAField', 'DAFieldList', 'DAQuestion', 'DAQuestionDict', 'DAInterview', 'DAUpload', 'DAUploadMultiple', 'DAAttachmentList', 'DAAttachment', 'to_yaml_file', 'base_name', 'to_package_name', 'oneline','DAQuestionList','map_names','fill_in_field_attributes']
+__all__ = ['Playground',
+    'PlaygroundSection',
+    'indent_by',
+    'varname',
+    'DAField',
+    'DAFieldList',
+    'DAQuestion',
+    'DAQuestionDict',
+    'DAInterview',
+    'DAUpload',
+    'DAUploadMultiple',
+    'DAAttachmentList',
+    'DAAttachment',
+    'to_yaml_file',
+    'base_name',
+    'to_package_name',
+    'oneline','DAQuestionList','map_names','fill_in_field_attributes',
+    'preprocess_label',
+]
 
-always_defined = set(["False", "None", "True", "dict", "i", "list", "menu_items", "multi_user", "role", "role_event", "role_needed", "speak_text", "track_location", "url_args", "x", "nav", "PY2", "string_types"])
+always_defined = set([
+    "False",
+    "None",
+    "True",
+    "dict",
+    "i",
+    "list",
+    "menu_items",
+    "multi_user",
+    "role",
+    "role_event",
+    "role_needed",
+    "speak_text",
+    "track_location",
+    "url_args",
+    "x",
+    "nav",
+    "PY2",
+    "string_types",
+])
 replace_square_brackets = re.compile(r'\\\[ *([^\\]+)\\\]')
 start_spaces = re.compile(r'^ +')
 end_spaces = re.compile(r' +$')
@@ -642,9 +679,12 @@ def varname(var_name):
     var_name = spaces.sub(r'_', var_name)
     var_name = invalid_var_characters.sub(r'', var_name)
     var_name = digit_start.sub(r'', var_name)
-    var_name = re.sub(r"^(.*)(_yes|_no)$", r"\1_yesnoradio", var_name)
-    # log(var_name, 'console')
     return var_name
+
+def preprocess_label (label):
+    new_label = re.sub(r"^(.*)(_yes|_no)$", r"\1_yesnoradio", label)
+    return new_label
+
 
 def oneline(text):
     text = newlines.sub(r'', text)

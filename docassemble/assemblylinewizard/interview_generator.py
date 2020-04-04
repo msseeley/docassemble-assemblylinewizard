@@ -619,6 +619,18 @@ def fix_variable_name(match):
         return r'${ ' + var_name + ' }'
     return r''
 
+# # def getYesNoName(label_name, yesno_accumulator):
+# def getYesNoName(label_name):
+#     # found = False
+#     radio_name = label_name  # If no yesno found, will stay the same
+#     # base_name = re.sub(r'^(.*)(_yes|_no)$', r'\1', pdf_field_name)
+#     # if (base_name != label_name):  # If '_yes' or '_no' was found
+#     #     found = True
+#     #     radio_name = base_name + '_yesnoradio'
+#     #     # if (not radio_name in yesno_accumulator):  # If base_name not already in the accumulator
+#     #         # yesno_accumulator.append(radio_name)  # Add it to the accumuator
+#     return radio_name
+
 def indent_by(text, num):
     if not text:
         return ""
@@ -630,6 +642,8 @@ def varname(var_name):
     var_name = spaces.sub(r'_', var_name)
     var_name = invalid_var_characters.sub(r'', var_name)
     var_name = digit_start.sub(r'', var_name)
+    var_name = re.sub(r"^(.*)(_yes|_no)$", r"\1_yesnoradio", var_name)
+    # log(var_name, 'console')
     return var_name
 
 def oneline(text):
@@ -717,6 +731,9 @@ def map_names(var_name):
     
     (r"^(plantiff|defendant|petitioner|respondent)$", r"str(\1s)"),
     (r"^(plantiffs|defendants|petitioners|respondents)$", r"str(\1)"),
+
+    # # yesnoradios
+    # (r"^(.*)(_yes|_no)$", r"\1_yesnoradio"),
   ]
 
   beginning_map = [
@@ -801,6 +818,8 @@ tests = [
     "defendants",
     "petitioners",
     "respondents",
+    "has_photo_yes",
+    "has_photo_no",
     # Not reserved
     "my_user_name_last",
     "user_address_street2_zip",

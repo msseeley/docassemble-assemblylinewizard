@@ -147,9 +147,60 @@ code: |
   #signature_fields.auto_gather = False
   # Determine the correct list to put this field in
 ---
+comment: |
+  id: accumulate_fields
+  code: |
+    # object whose keys are commonly shared label starting values before _yes's and _no's
+    yesnos = []
+    log('accumulating fields', 'console')
+    for pdf_field_tuple in all_fields:
+      pdf_field_name = pdf_field_tuple[0] # first element in the tuple is the name
+      # radio_field_name = getYesNoName(pdf_field_name, yesnos)
+      radio_field_name = getYesNoName(pdf_field_name)
+      old_yesno_found = False
+      # Skip the built-in variable names that we'll have pre-written questions for    
+      # map_names checks if its a field we're handling by renaming from the PDF
+      if map_names(pdf_field_name) != pdf_field_name or pdf_field_name in variables_to_skip:
+        new_field = built_in_fields_used.appendObject()
+      elif pdf_field_tuple[4] == '/Sig':
+        new_field = signature_fields.appendObject()
+      elif (radio_field_name != pdf_field_name):
+        if (radio_field_name in yesnos): old_yesno_found = True
+        else:
+          yesno_found = True
+          yesnos.append(radio_field_name)
+          # pdf_field_name = radio_field_name
+          new_field = fields.appendObject()
+          log(pdf_field_name, 'console')
+      else:
+        new_field = fields.appendObject()
+
+      if not old_yesno_found
+        fill_in_field_attributes(new_field, pdf_field_tuple)    
+
+    get_fields = True
+---
+id: accumulate_fields
 code: |
+  def isYesNoRadio(label_name):
+    # log('check yesnoradio', 'console')
+    search_results = re.search(r"^.*_yesnoradio$", label_name)
+    # log(search_results, 'console')
+    return not search_results is None
+
+  # object whose keys are commonly shared label starting values before _yes's and _no's
+  yesnos = []
   for pdf_field_tuple in all_fields:
     pdf_field_name = pdf_field_tuple[0] # first element in the tuple is the name
+    # log(pdf_field_name, 'console')
+    # `yesnoradio`s start doubled up. Only create one question with them.
+    # todo: Find where this is accumulated and make it a set. Break something?
+    if (isYesNoRadio(pdf_field_name) and pdf_field_name in yesnos):  # if it's already been accounted for
+      yesnos.append(pdf_field_name)
+      # log('iterating over all_fields', 'console')
+      # log(pdf_field_name, 'console')
+      # continue  # skip this loop
+
     # Skip the built-in variable names that we'll have pre-written questions for    
     # map_names checks if its a field we're handling by renaming from the PDF
     if map_names(pdf_field_name) != pdf_field_name or pdf_field_name in variables_to_skip:
@@ -158,11 +209,10 @@ code: |
       new_field = signature_fields.appendObject()
     else:
       new_field = fields.appendObject()
-      
+
     fill_in_field_attributes(new_field, pdf_field_tuple)    
 
   get_fields = True
-
 ---
 code: |
   interview.field_list = fields

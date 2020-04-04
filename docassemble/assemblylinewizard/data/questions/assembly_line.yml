@@ -184,6 +184,7 @@ id: accumulate_fields
 code: |
   def isYesNoRadio(label_name):
     # log('check yesnoradio', 'console')
+    # log(label_name, 'console')
     search_results = re.search(r"^.*_yesnoradio$", label_name)
     # log(search_results, 'console')
     return not search_results is None
@@ -192,14 +193,17 @@ code: |
   yesnos = []
   for pdf_field_tuple in all_fields:
     pdf_field_name = pdf_field_tuple[0] # first element in the tuple is the name
-    # log(pdf_field_name, 'console')
+    pdf_field_name = preprocess_label(pdf_field_name)
+    base_name = re.sub(r'^(.*)_yesnoradio$', r'\1', pdf_field_name)
     # `yesnoradio`s start doubled up. Only create one question with them.
-    # todo: Find where this is accumulated and make it a set. Break something?
-    if (isYesNoRadio(pdf_field_name) and pdf_field_name in yesnos):  # if it's already been accounted for
-      yesnos.append(pdf_field_name)
-      # log('iterating over all_fields', 'console')
-      # log(pdf_field_name, 'console')
-      # continue  # skip this loop
+    # if this is the first time it's come up
+    if (isYesNoRadio(pdf_field_name)):
+      if (not base_name in yesnos):
+        log(pdf_field_name, 'console')
+        yesnos.append(base_name)
+      else:  # if it's already been accounted for, skip adding it
+        log(pdf_field_name, 'console')
+        continue  # skip this loop
 
     # Skip the built-in variable names that we'll have pre-written questions for    
     # map_names checks if its a field we're handling by renaming from the PDF

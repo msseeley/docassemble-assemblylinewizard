@@ -20,7 +20,7 @@ import types
 
 TypeType = type(type(None))
 
-__all__ = ['Playground', 'PlaygroundSection', 'indent_by', 'varname', 'DAField', 'DAFieldList', 'DAQuestion', 'DAQuestionDict', 'DAInterview', 'DAUpload', 'DAUploadMultiple', 'DAAttachmentList', 'DAAttachment', 'to_yaml_file', 'base_name', 'to_package_name', 'oneline','DAQuestionList','map_names','fill_in_field_attributes','attachment_download_html']
+__all__ = ['Playground', 'PlaygroundSection', 'indent_by', 'varname', 'DAField', 'DAFieldList', 'DAQuestion', 'DAQuestionDict', 'DAInterview', 'DAUpload', 'DAUploadMultiple', 'DAAttachmentList', 'DAAttachment', 'to_yaml_file', 'base_name', 'to_package_name', 'oneline', 'DAQuestionList', 'map_names', 'is_reserved_label', 'fill_in_field_attributes', 'attachment_download_html']
 
 always_defined = set(["False", "None", "True", "dict", "i", "list", "menu_items", "multi_user", "role", "role_event", "role_needed", "speak_text", "track_location", "url_args", "x", "nav", "PY2", "string_types"])
 replace_square_brackets = re.compile(r'\\\[ *([^\\]+)\\\]')
@@ -40,6 +40,8 @@ def fill_in_field_attributes(new_field, pdf_field_tuple):
     #try:
         # Let's guess the type of each field from the name / info from PDF
     new_field.variable = varname(pdf_field_tuple[0])
+    new_field.transformed_variable = map_names(pdf_field_tuple[0])
+
     variable_name_guess = new_field.variable.replace('_',' ').capitalize()        
     new_field.has_label = True
     if new_field.variable.endswith('_date'):
@@ -185,6 +187,12 @@ class DAFieldList(DAList):
         return docassemble.base.functions.comma_and_list(map(lambda x: '`' + x.variable + '`', self.elements))
 
 class DAQuestion(DAObject):
+    '''Builds the string for each question block with its attributes/atoms.'''
+
+    # TODO: subclass question or come up with other types for things
+    # that aren't really questions instead of giant IF block
+    # TODO: separate out some of the code specific to the assembly-line project
+    # into its own module or perhaps interview YAML
     def init(self, **kwargs):
         self.field_list = DAFieldList()
         self.templates_used = set()
@@ -200,8 +208,11 @@ class DAQuestion(DAObject):
     #     return [var for var in sorted(varsinuse['undefined_names']) if var not in var_list and var != self.interview.target_variable]
     def source(self, follow_additional_fields=True):
         content = ''
+        if hasattr(self, 'progress'):
+            content += 'progress: ' + self.progress + '\n'
         if hasattr(self, 'is_mandatory') and self.is_mandatory:
             content += "mandatory: True\n"
+        # TODO: refactor. Too many things shoved into "question"
         if self.type == 'question':
             done_with_content = False
             if hasattr(self,'has_mandatory_field') and not self.has_mandatory_field:
@@ -212,15 +223,16 @@ class DAQuestion(DAObject):
             if self.subquestion_text != "":
                 content += "subquestion: |\n" + indent_by(self.subquestion_text, 2)
             if len(self.field_list) == 1:
+                field_name_to_use = map_names(self.field_list[0].variable)
                 if self.field_list[0].field_type == 'yesno':
-                    content += "yesno: " + varname(self.field_list[0].variable) + "\n"
+                    content += "yesno: " + field_name_to_use + "\n"
                     done_with_content = True
                 elif self.field_list[0].field_type == 'yesnomaybe':
-                    content += "yesnomaybe: " + varname(self.field_list[0].variable) + "\n"
+                    content += "yesnomaybe: " + field_name_to_use + "\n"
                     done_with_content = True
             if self.field_list[0].field_type == 'end_attachment':
                 if hasattr(self, 'interview_label'): # this tells us its the ending screen
-                  content += "buttons:\n  - Exit: exit\n  - Restart: restart\n"
+                  # content += "buttons:\n  - Exit: exit\n  - Restart: restart\n" # we don't want people to erase their session
                   content += "attachment code: " + self.attachment_variable_name + "\n"
                 #if (isinstance(self, DAAttachmentList) and self.attachments.gathered and len(self.attachments)) or (len(self.attachments)):
                 # attachments is no longer always a DAList
@@ -264,10 +276,11 @@ class DAQuestion(DAObject):
             if not done_with_content:
                 content += "fields:\n"
                 for field in self.field_list:
+                    field_name_to_use = map_names(field.variable)
                     if field.has_label:
-                        content += "  - " + repr_str(field.label) + ": " + varname(field.variable) + "\n"
+                        content += "  - " + repr_str(field.label) + ": " + field_name_to_use + "\n"
                     else:
-                        content += "  - no label: " + varname(field.variable) + "\n"
+                        content += "  - no label: " + field_name_to_use + "\n"
                     if field.field_type == 'yesno':
                         content += "    datatype: yesno\n"
                     elif field.field_type == 'yesnomaybe':
@@ -304,14 +317,12 @@ class DAQuestion(DAObject):
         elif self.type == 'code':
             content += "code: |\n" + indent_by(self.code, 2)
         elif self.type == 'interview order':
-            content += "id: " + self.interview_label + "\n"
+            # TODO: refactor this. Too much of it is assembly-line specific code
+            # move into the interview YAML or a separate module/subclass
+            content += "id: interview_order_" + self.interview_label + "\n"
             content += "code: |\n"
             content += "  # This is a placeholder to control logic flow in this interview" + "\n"
             content += "  # It was generated from interview_generator.py as an 'interview order' type question."
-            content += "  # We list one variable from each screen here, in order to control the order of questions\n"
-            content += "  # To change the order, you can rearrange, or make conditional. If you make conditional here,\n"
-            content += "  # You must also make sure it's conditional in the attachment block, or assign each variable \n"
-            content += "  # on the optional screen to DAEmpty() \n"
             content += "  basic_questions_intro_screen \n" # trigger asking any intro questions at start of interview
             content += "  " + self.interview_label + "_intro" + "\n"
             signatures = []
@@ -327,10 +338,6 @@ class DAQuestion(DAObject):
             content += "  basic_questions_signature_flow\n"
             for signature_field in signatures:
               content += "  " + signature_field + "\n"
-            # content += "  # Below we run functions from virtual_court_support.py to selectively trigger the built-in fields in the order we want\n"
-            # content += "  trigger_user_questions(interview_metadata[\"" + self.interview_label + "\"])\n"
-            # content += "  trigger_court_questions(interview_metadata[\"" + self.interview_label + "\"])\n"
-            # content += "  basic_questions_user_fields \n" # trigger asking the user details at the end of the interview
             content += "  " + self.interview_label + " = True" + "\n"
         elif self.type == 'text_template':
             content += "template: " + varname(self.field_list[0].variable) + "\n"
@@ -361,6 +368,9 @@ class DAQuestion(DAObject):
               for category in self.other_categories.split(','):
                 content += "    - " + oneline(category) + "\n"
         elif self.type == 'metadata_code':
+            # TODO: this is begging to be refactored into
+            # just dumping out a dictionary in json-like format
+            # rather than us hand-writing the data structure
             content += "mandatory: True\n" # We need this block to run every time to build our metadata variable
             content += "code: |\n"
             content += "  interview_metadata # make sure we initialize the object\n"
@@ -386,21 +396,49 @@ class DAQuestion(DAObject):
             content += "    'logic block variable': '" + self.interview_label + "',\n"
             content += "    'attachment block variable': '" + self.interview_label + "_attachment',\n"
             if hasattr(self, 'typical_role'):
-              content += "    'typical role': '" + oneline(self.typical_role) + "',"
+              content += "    'typical role': '" + oneline(self.typical_role) + "',\n"
+            if hasattr(self, 'built_in_fields_used'):
+              content += "    'built_in_fields_used': [\n"
+              for field in self.built_in_fields_used:
+                content += "      {'variable': '" + varname(field.variable) + "',\n"
+                content += "       'transformed_variable': '" + field.transformed_variable + "',\n"
+                if hasattr(field, 'field_type'):
+                  content += "      'field_type': '" + field.field_type + "',\n"             
+                if hasattr(field, 'field_data_type'):
+                  content += "      'field_data_type': '" + field.field_data_type + "',\n"
+                content += "      },\n"
+              content += "      ],\n"
+            if hasattr(self, 'fields'):
+              content += "    'fields': [\n"
+              for field in self.fields:
+                content += "      {'variable': '" + varname(field.variable) + "',\n"
+                content += "       'transformed_variable': '" + field.transformed_variable + "',\n"
+                if hasattr(field, 'field_type'):
+                  content += "      'field_type': '" + field.field_type + "',\n"             
+                if hasattr(field, 'field_data_type'):
+                  content += "      'field_data_type': '" + field.field_data_type + "',\n"
+                content += "      },\n"                  
+              content += "      ],\n"
             content += "  })\n"
+            #content += "Trigger the data blocks that list the fields we're using \n"
+            #content += "interview_medatata['"+ self.interview_label +  "']['built_in_fields_used']\n"
+            #content += "interview_metadata['"+ self.interview_label +  "']['fields']\n"
+
         elif self.type == 'modules':
             content += "modules:\n"
             for module in self.modules:
                 content += " - " + str(module) + "\n"
-        elif self.type == 'variables':
-          content += "variable name: interview_metadata['"+ self.interview_label +"']['" + str(self).partition(' ')[0] + "']"  + "\n" # 'field_list' + "\n"
-          content += "data:" + "\n"
-          for field in self.field_list:
-            content += "  - variable: " + varname(field.variable) + "\n"
-            if hasattr(field, 'field_type'):
-              content += "    " + "field_type: " + field.field_type + "\n"             
-            if hasattr(field, 'field_data_type'):
-              content += "    " + "field_data_type: " + field.field_data_type + "\n"
+        # # The variable block probably is unneeded now
+        # # We moved this content into the metadata_code block
+        # elif self.type == 'variables':
+        #   content += "variable name: interview_metadata['"+ self.interview_label +"']['" + str(self).partition(' ')[0] + "']"  + "\n" # 'field_list' + "\n"
+        #   content += "data:" + "\n"
+        #   for field in self.field_list:
+        #     content += "  - variable: " + varname(field.variable) + "\n"
+        #     if hasattr(field, 'field_type'):
+        #       content += "    " + "field_type: " + field.field_type + "\n"             
+        #     if hasattr(field, 'field_data_type'):
+        #       content += "    " + "field_data_type: " + field.field_data_type + "\n"
         elif self.type == 'includes':
           content += "include:\n"
           for include in self.includes:
@@ -712,100 +750,260 @@ def project_name(name):
 
 import re
 
-def map_names(var_name):
-  """Transform a PDF field name into a standardized object name, for a given set of specific cases in 
-  our interview generator."""
-  
-  
-  start_people_regex_string = (r"^(user|user\d+"
-  + r"|other_party|other_party\d+"
-  + r"|child|child\d+"
-  + r"|witness|witness\d+)_")
-  
-  start_court_regex_string = r"^(court|court\d+)_"
-  
-  ending_map = [
-    (start_people_regex_string + r"name_first$", r"\1.name.first"),
-    (start_people_regex_string + r"name_middle$", r"\1.name.middle"),
-    (start_people_regex_string + r"name_last$", r"\1.name.last"),
-    (start_people_regex_string + r"name_suffix$", r"\1.name.suffix"),
-    (start_people_regex_string + r"gender$", r"\1.gender"),
-    (start_people_regex_string + r"birthdate$", r"\1.birthdate.format()"),
-    (start_people_regex_string + r"age$", r"\1.age_in_years()"),
-    (start_people_regex_string + r"email$", r"\1.email"),
-    (start_people_regex_string + r"phone$", r"\1.phone_number"),
-    (start_people_regex_string + r"address_block$", r"\1.address.block()"),
-    (start_people_regex_string + r"address_street$", r"\1.address.address"),
-    (start_people_regex_string + r"address_street2$", r"\1.address.unit"),
-    (start_people_regex_string + r"address_city$", r"\1.address.city"),
-    (start_people_regex_string + r"address_state$", r"\1.address.state"),
-    (start_people_regex_string + r"address_zip$", r"\1.address.zip"),
-    (start_people_regex_string + r"address_on_one_line$", r"\1.address.on_one_line()"),
-    (start_people_regex_string + r"address_city_state_zip$", r"\1.address.line_two()"),
-    (start_people_regex_string + r"signature$", r"\1.signature"),
-    (start_people_regex_string + r"name_full$", r"str(\1)"),
+# Words that are reserved exactly as they are
+reserved_whole_words = [
+  'signature_date',  # this is the plural version of this?
+]
 
-    (start_court_regex_string + r"name$", r"\1"),
-    # (start_court_regex_string + r"name_short$", not implemented),
-    # (start_court_regex_string + r"division$", not implemented),
-    (start_court_regex_string + r"address_county$", r"\1.address.county"),
-    # We changed naming policy, but this is still used
-    (start_court_regex_string + r"_county$", r"\1.address.county"),
+# Part of handling plural labels
+reserved_var_plurals = [
+  'users',
+  'plaintiffs',
+  'defendants',
+  'petitioners',
+  'respondents',
+  'spouses',
+  'parents',
+  'guardians',
+  'caregivers',
+  'attorneys',
+  'translators',
+  'debt_collectors',
+  'creditors',
+  'courts',
+  'docket_numbers',  # Not a person
+  'other_parties',
+  'children',
+  'guardians_ad_litem',
+  'witnesses',
+]
 
-    # signature_date is just signature_date,
-    (r"^(docket_number)$", r"\1s[0]"),
-    (r"^(docket_number)(\d+)$", r"\1s[\2-1]"),
-    
-    (r"^(plantiff|defendant|petitioner|respondent)$", r"str(\1s)"),
-    (r"^(plantiffs|defendants|petitioners|respondents)$", r"str(\1)"),
-  ]
+reserved_prefixes = (r"^(user"  # deprecated, but still supported
++ r"|other_party"  # deprecated, but still supported
++ r"|child"
++ r"|plaintiff"
++ r"|defendant"
++ r"|petitioner"
++ r"|respondent"
++ r"|spouse"
++ r"|parent"
++ r"|caregiver"
++ r"|attorney"
++ r"|translator"
++ r"|debt_collector"
++ r"|creditor"
++ r"|witness"
++ r"|court"
++ r"|docket_number"
++ r"|signature_date"
+# Can't find a way to make order not matter here
+# without making everything in general more messy
++ r"|guardian_ad_litem"
++ r"|guardian"
++ r")")
 
-  beginning_map = [
-    (r"^(user)(\d+)(.*)$", r"\1s[\2-1]\3"),
-    (r"^(user)(\..*)$", r"\1s[0]\2"),
-    # Full name
-    (r"^(str\()(user)(\d+)(\))$", r"\1\2s[\3-1]\4"),
-    (r"^(str\()(user)(\))$", r"\1\2s[0]\3"),
-    
-    (r"^(other_party)(\d+)(.*)$", r"other_parties[\2-1]\3"),
-    (r"^(other_party)(\..*)$", r"other_parties[0]\2"),
-    # Full name
-    (r"^(str\()(other_party)(\d+)(\))$", r"\1other_parties[\3-1]\4"),
-    (r"^(str\()(other_party)(\))$", r"\1other_parties[0]\3"),
-    
-    (r"^(child)(\d+)(.*)$", r"\1ren[\2-1]\3"),
-    (r"^(child)(\..*)$", r"\1ren[0]\2"),
-    # Full name
-    (r"^(str\()(child)(\d+)(\))$", r"\1\2ren[\3-1]\4"),
-    (r"^(str\()(child)(\))$", r"\1\2ren[0]\3"),
-    
-    (r"^(witness)(\d+)(.*)$", r"\1es[\2-1]\3"),
-    (r"^(witness)(\..*)$", r"\1es[0]\2"),
-    # Full name
-    (r"^(str\()(witness)(\d+)(\))$", r"\1\2es[\3-1]\4"),
-    (r"^(str\()(witness)(\))$", r"\1\2es[0]\3"),
-    
-    (r"^(court)$", r"\1s[0]"),
-    (r"^(court)(\d+)(.*)$", r"\1s[\2-1]\3"),
-    (r"^(court)(\..*)$", r"\1s[0]\2"),
-  ]
+reserved_pluralizers_map = {
+  'user': 'users',
+  'plaintiff': 'plaintiffs',
+  'defendant': 'defendants',
+  'petitioner': 'petitioners',
+  'respondent': 'respondents',
+  'spouse': 'spouses',
+  'parent': 'parents',
+  'guardian': 'guardians',
+  'caregiver': 'caregivers',
+  'attorney': 'attorneys',
+  'translator': 'translators',
+  'debt_collector': 'debt_collectors',
+  'creditor': 'creditors',
+  'court': 'courts',
+  'docket_number': 'docket_numbers',
+  # Non-s plurals
+  'other_party': 'other_parties',
+  'child': 'children',
+  'guardian_ad_litem': 'guardians_ad_litem',
+  'witness': 'witnesses',
+}
 
-  for rule in ending_map:
-    one_rule_applied = re.sub(rule[0], rule[1], var_name)
-    if one_rule_applied != var_name:
-      for rule in beginning_map:
-        two_rules_applied = re.sub(rule[0], rule[1], one_rule_applied)
-        if one_rule_applied != two_rules_applied:
-          return two_rules_applied
-      return one_rule_applied
+# Any reason to not make all suffixes available to everyone?
+reserved_suffixes_map = {
+  '_name': "",  # full name
+  '_name_full': "",  # full name
+  '_name_first': ".name.first",
+  '_name_middle': ".name.middle",
+  '_name_last': ".name.last",
+  '_name_suffix': ".name.suffix",
+  '_gender': ".gender",
+  # '_gender_male': ".gender == 'male'",
+  # '_gender_female': ".gender == 'female'",
+  '_birthdate': ".birthdate.format()",
+  '_age': ".age_in_years()",
+  '_email': ".email",
+  '_phone': ".phone_number",
+  '_address_block': ".address.block()",
+  '_address_street': ".address.address",
+  '_address_street2': ".address.unit",
+  '_address_city': ".address.city",
+  '_address_state': ".address.state",
+  '_address_zip': ".address.zip",
+  '_address_on_one_line': ".address.on_one_line()",
+  '_address_one_line': ".address.on_one_line()",
+  '_address_city_state_zip': ".address.line_two()",
+  '_signature': ".signature",
+  # Court-specific
+  # '_name_short': not implemented,
+  # '_division': not implemented,
+  '_address_county': ".address.county",
+  '_county': ".address.county",
+}
+
+#def labels_to_pdf_vars(label):
+def map_names(label):
+  """For a given set of specific cases, transform a
+  PDF field name into a standardized object name
+  that will be the value for the attachment field."""
+
+  # Get rid of all underscores
+  # Doesn't matter if it's a first appearance or more
+  label = remove_multiple_appearance_indicator(label)
+
+  if exactly_matches_reserved_word(reserved_whole_words, label):
+    return label
+
+  # For the sake of time, this is the fastest way to get around something being plural
+  if is_a_plural(reserved_var_plurals, label):
+    return get_stringifiable_version(label)
   
-  return var_name
+  # Break up label into its parts
+  label_groups = get_reserved_label_parts(reserved_prefixes, label)
+
+  # If no matches to automateable labels were found,
+  # just use the label as it is
+  if (label_groups is None or label_groups[1] == ''):
+    return label
+
+  # With reserved words, we're always using an index
+  # of the plural version of the prefix of the label
+  prefix = label_groups[1]
+  var_start = pluralize_base(reserved_pluralizers_map, prefix)
+
+  digit = label_groups[2]
+  index = indexify(digit)
+
+  # Here's where we split to avoid conflict with generator
+
+  suffix = label_groups[3]
+  suffix_as_attribute = turn_any_suffix_into_an_attribute(reserved_suffixes_map, suffix)
+
+  to_join = [var_start, index, suffix_as_attribute]
+  combo = reconstruct_var_name(to_join)
+
+  # Has to happen after docket number has been created
+  if (should_be_stringified(combo)):
+    result = get_stringifiable_version(combo)
+  else: result = combo
+
+  return result
+
+
+############################
+#  Identify reserved suffixes
+############################
+def is_reserved_label(label):
+  is_reserved = False
+
+  # Get rid of all underscores
+  # Doesn't matter if it's a first appearance or more
+  label = remove_multiple_appearance_indicator(label)
+
+  if exactly_matches_reserved_word(reserved_whole_words, label):
+    return True
+
+  # For the sake of time, this is the fastest way to get around something being plural
+  if is_a_plural(reserved_var_plurals, label):
+    return True
+  
+  # Break up label into its parts
+  label_groups = get_reserved_label_parts(reserved_prefixes, label)
+
+  # If no matches to automateable labels were found,
+  # just use the label as it is
+  if (label_groups is None or label_groups[1] == ''):
+    return False
+
+  suffix = label_groups[3]
+  if (suffix == ""): return True
+  is_reserved = is_reserved_suffix(reserved_suffixes_map, suffix)
+
+  return is_reserved
+
+def is_reserved_suffix(suffix_map, suffix):
+  # Search through reserved suffixes to see if
+  # its end matches a reserved suffix
+  try:
+    suffix = suffix_map[suffix]
+    return True
+  except KeyError:
+    return False
+
+
+############################
+#  Label processing helper functions
+############################
+def remove_multiple_appearance_indicator(label):
+  return re.sub(r'_{2,}\d+', '', label)
+
+def exactly_matches_reserved_word(reserved_words, label):
+  return label in reserved_words
+
+def is_a_plural(plurals, label):
+  return label in plurals
+
+def get_stringifiable_version(label):
+  return 'str(' + label + ')'
+
+def get_reserved_label_parts(prefixes, label):
+   return re.search(fr"{prefixes}(\d*)(.*)", label)
+
+def pluralize_base(pluralizers_map, key):
+  return pluralizers_map[key]
+
+# Return label digit as the correct syntax for an index
+def indexify(digit):
+  if (digit == ''): return '[0]'
+  else: return '[' + digit + '-1]'
+
+def turn_any_suffix_into_an_attribute(suffix_map, suffix):
+  # If this can be turned int a reserved suffix,
+  # that suffix is used
+  try: suffix = suffix_map[suffix]
+  # Otherwise, the suffix is not transformed. It's used
+  # as it is, except turned into an attribute
+  except KeyError:
+    suffix = re.sub(r'^_', '.', suffix)
+  return suffix
+
+def reconstruct_var_name(to_join):
+  return "".join(to_join)
+
+def should_be_stringified(var_name):
+  has_no_attributes = var_name.find(".") == -1
+  is_docket_number = var_name.startswith("docket_numbers[")
+  return has_no_attributes and not is_docket_number
+
 
 '''
 tests = [
     # Reserved
+    "signature_date",
+    "plaintiffs__3",
+    "user",
+    "user__2",
+    "user___2",
     "user_name_first",
     "user1_name_first",
+    "user1_name_first__34",
+    "user1_name_first____34",
     "user25_name_first",
     "user_name_full",
     "user1_name_full",
@@ -832,25 +1030,31 @@ tests = [
     "court1_name",
     "court_address_county",
     "court1_address_county",
+    "court_county",
     "docket_number",
     "docket_number1",
-    "plantiff",
+    "plaintiff",
     "defendant",
     "petitioner",
     "respondent",
-    "plantiffs",
+    "plaintiffs",
     "defendants",
     "petitioners",
     "respondents",
+    # Reserved start
+    "user_address2_zip",
+    "user_address_street2_zip",
     # Not reserved
     "my_user_name_last",
-    "user_address_street2_zip",
-    "user_address2_zip",
+    "foo",
 ]
 # tests = ["user_name_first","user25_name_last","other_party_name_full" ]
 #if __name__ == 'main':
 
 for test in tests:
-  print(test, "=>", map_names(test))
+  print('~~~~~~~~~~~')
+  print('"' + test + '":', '"' + map_names(test) + '",')
   # map_names(test)
+  # print('"' + test + '":', '"' + labels_to_pdf_vars(test) + '",')
+  # # labels_to_pdf_vars(test)
 '''

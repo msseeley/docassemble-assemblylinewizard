@@ -1,0 +1,46 @@
+# Get output from tests.
+modules:
+  - .map_names_test
+---
+mandatory: True
+code: |
+  # What do I pass to this
+  map_names_tests = TestMapNames()
+  ran_tests
+---
+event: ran_tests
+question: map_names() tests
+css: |
+  <style>
+    .passed code {
+      color: black;
+    }
+    .failed code {
+      color: red;
+    }
+  </style>
+subquestion: |
+  #### Selected scenarios
+
+  <%
+      results = map_names_tests.mapped_tests()
+      failed = results["errored"]
+      passed = results["passed"]
+  %>
+
+  Failed: ${ len(failed) }[BR]
+  Passed: ${ len(passed) }
+
+  ##### Failed:
+
+  % for one_test in failed:
+    <strong class="failed">${one_test["test"]}:</strong>[BR]${one_test["result"]}
+  % endfor
+
+  ##### Passed:
+
+  <span class="passed">
+  % for one_test in passed:
+  `${one_test}`[BR]
+  % endfor
+  </span>
